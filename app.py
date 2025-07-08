@@ -1,198 +1,106 @@
-import dash
-import dash_bootstrap_components as dbc
-from dash import dcc, html, Input, Output, dash_table
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Load dataset
-df = pd.read_csv("C:/Users/mange/OneDrive/Desktop/dashboard_project/Dataset.csv")
-df = df.dropna(subset=["Cuisines", "City", "Latitude", "Longitude"])
+# Set page config
+st.set_page_config(page_title="Restaurant Insights Dashboard", layout="wide")
 
-# Top cuisines
-top_cuisines = df["Cuisines"].str.split(", ").explode().value_counts().head(3).reset_index()
-top_cuisines.columns = ['Cuisine', 'Count']
+# Load Data
+@st.cache_data
+def load_data():
+    return pd.read_csv("Dataset.csv")
 
-# Dash App
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])  # Dark Theme
-app.title = "Restaurant Insights Dashboard"
+df = load_data()
+df.dropna(subset=["Cuisines", "City", "Latitude", "Longitude"], inplace=True)
 
-app.layout = dbc.Container([
-    dbc.NavbarSimple(
-        brand="🍽 Restaurant Insights Dashboard",
-        color="dark", dark=True, fluid=True, className="mb-4"
-    ),
+# Sidebar
+st.sidebar.title("🍽 Filter Options")
+selected_city = st.sidebar.selectbox("Select City", options=["All"] + sorted(df["City"].unique().tolist()))
 
-    dbc.Row([
-        dbc.Col([
-            html.Label("🔍 Select City:", style={"color": "white"}),
-            dcc.Dropdown(
-                id="city-dropdown",
-                options=[{'label': city, 'value': city} for city in df["City"].unique()],
-                placeholder="Filter by City", multi=False
-            )
-        ], width=4)
-    ], className="mb-3"),
+filtered_df = df if selected_city == "All" else df[df["City"] == selected_city]
 
-    dbc.Row([
-        dbc.Col(dbc.Card([
-            dbc.CardBody([
-                html.H5("🏙️ Total Cities", className="text-white"),
-                html.H3(id="total-cities", className="text-white")
-            ])
-        ], color="dark"), width=3),
+# Metrics
+st.title("📊 Restaurant Insights Dashboard")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("🏙️ Total Cities", df["City"].nunique())
+col2.metric("🍴 Total Restaurants", len(filtered_df))
+col3.metric("⭐ Avg. Rating", round(filtered_df["Aggregate rating"].mean(), 2))
+col4.metric("🗳️ Avg. Votes", int(filtered_df["Votes"].mean()))
 
-        dbc.Col(dbc.Card([
-            dbc.CardBody([
-                html.H5("🍴 Total Restaurants", className="text-white"),
-                html.H3(id="total-restaurants", className="text-white")
-            ])
-        ], color="dark"), width=3),
+# Top Cuisines
+st.markdown("### 🍛 Top 3 Cuisines")
+top_cuisines = filtered_df["Cuisines"].str.split(", ").explode().value_counts().head(3).reset_index()
+top_cuisines.columns = ["Cuisine", "Count"]
+fig1 = px.bar(top_cuisines, x="Cuisine", y="Count", color="Cuisine")
+st.plotly_chart(fig1, use_container_width=True)
 
-        dbc.Col(dbc.Card([
-            dbc.CardBody([
-                html.H5("⭐ Average Rating", className="text-white"),
-                html.H3(id="avg-rating", className="text-white")
-            ])
-        ], color="dark"), width=3),
+# Price Range
+st.markdown("### 💰 Price Range Distribution")
+fig2 = px.histogram(filtered_df, x="Price range", nbins=4, title="Price Range")
+st.plotly_chart(fig2, use_container_width=True)
 
-        dbc.Col(dbc.Card([
-            dbc.CardBody([
-                html.H5("🗳️ Average Votes", className="text-white"),
-                html.H3(id="avg-votes", className="text-white")
-            ])
-        ], color="dark"), width=3),
-    ], className="mb-4"),
+# Rating Distribution
+st.markdown("### ⭐ Rating Distribution")
+fig3 = px.histogram(filtered_df, x="Aggregate rating", nbins=20)
+st.plotly_chart(fig3, use_container_width=True)
 
-    dbc.Row([
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("📊 Top 3 Cuisines", className="text-white bg-dark"),
-            dbc.CardBody([dcc.Graph(
-                figure=px.bar(top_cuisines, x='Cuisine', y='Count', color='Cuisine')
-            )])
-        ]), width=6),
+# Online Delivery & Table Booking
+col5, col6 = st.columns(2)
+with col5:
+    st.markdown("### 🚚 Online Delivery")
+    fig4 = px.pie(filtered_df, names="Has Online delivery", title="Online Delivery Availability")
+    st.plotly_chart(fig4, use_container_width=True)
 
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("📈 Price Range Distribution", className="text-white bg-dark"),
-            dbc.CardBody([dcc.Graph(id="price-graph")])
-        ]), width=6),
-    ], className="mb-4"),
+with col6:
+    st.markdown("### 📅 Table Booking")
+    fig5 = px.pie(filtered_df, names="Has Table booking", title="Table Booking Availability")
+    st.plotly_chart(fig5, use_container_width=True)
 
-    dbc.Row([
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("🗳️ Votes vs Ratings", className="text-white bg-dark"),
-            dbc.CardBody([dcc.Graph(id="votes-vs-rating-graph")])
-        ]), width=6),
-
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("🗺️ Map (⭐ Highlights 5-Star)", className="text-white bg-dark"),
-            dbc.CardBody([dcc.Graph(id="map-graph")])
-        ]), width=6),
-    ], className="mb-4"),
-
-    dbc.Row([
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("🚚 Online Delivery Stats", className="text-white bg-dark"),
-            dbc.CardBody([dcc.Graph(id="online-delivery-pie")])
-        ]), width=6),
-
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("📅 Table Booking Stats", className="text-white bg-dark"),
-            dbc.CardBody([dcc.Graph(id="table-booking-pie")])
-        ]), width=6),
-    ], className="mb-4"),
-
-    dbc.Row([
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("⭐ Ratings Distribution", className="text-white bg-dark"),
-            dbc.CardBody([dcc.Graph(id="rating-distribution")])
-        ]), width=6),
-
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("🏆 Top 10 Rated Restaurants (⭐ Highlighted)", className="text-white bg-dark"),
-            dbc.CardBody([
-                dash_table.DataTable(
-                    id="top-table",
-                    style_table={'overflowX': 'auto'},
-                    style_cell={'textAlign': 'left', 'padding': '5px'},
-                    style_header={'backgroundColor': '#444', 'color': 'white', 'fontWeight': 'bold'},
-                    style_data={'backgroundColor': '#2c2c2c', 'color': 'white'},
-                    page_size=10
-                )
-            ])
-        ]), width=6),
-    ]),
-
-    html.Hr(),
-    dbc.Row([
-        dbc.Col(html.Div([
-            html.H2("📬 Get in Touch!", style={'color': '#66d9ef', 'textAlign': 'center'}),
-            html.P("If you have any questions or just want to connect, feel free to reach out to me on LinkedIn or check out my GitHub!",
-                   style={'fontSize': '18px', 'textAlign': 'center', 'color': '#ccc'}),
-            html.P("🔗 Mangesh Ambekar", style={'fontSize': '22px', 'fontWeight': 'bold', 'textAlign': 'center', 'color': '#ffffff'}),
-            html.Div([
-                html.A(html.Img(src="https://www.svgrepo.com/show/448234/linkedin.svg",
-                                style={'height': '50px', 'marginRight': '30px'}),
-                       href="https://www.linkedin.com/in/mangeshsanjayambekar/", target="_blank"),
-                html.A(html.Img(src="https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg",
-                                style={'height': '50px'}),
-                       href="https://github.com/Mangesh0101", target="_blank"),
-            ], style={'display': 'flex', 'justifyContent': 'center', 'alignItems': 'center', 'marginTop': '10px'})
-        ]), width=12)
-    ])
-], fluid=True)
-
-# Callbacks
-@app.callback(
-    Output("total-cities", "children"),
-    Output("total-restaurants", "children"),
-    Output("avg-rating", "children"),
-    Output("avg-votes", "children"),
-    Output("price-graph", "figure"),
-    Output("votes-vs-rating-graph", "figure"),
-    Output("map-graph", "figure"),
-    Output("online-delivery-pie", "figure"),
-    Output("table-booking-pie", "figure"),
-    Output("rating-distribution", "figure"),
-    Output("top-table", "data"),
-    Output("top-table", "columns"),
-    Input("city-dropdown", "value")
+# Map
+st.markdown("### 🗺️ Restaurant Locations (⭐ 5-Star Highlighted)")
+filtered_df["Rating Label"] = filtered_df["Aggregate rating"].apply(lambda x: "⭐ 5-Star" if x == 5.0 else "Others")
+fig_map = px.scatter_mapbox(
+    filtered_df,
+    lat="Latitude",
+    lon="Longitude",
+    color="Rating Label",
+    hover_name="Restaurant Name",
+    hover_data=["City", "Cuisines"],
+    zoom=3,
+    height=500
 )
-def update_dashboard(city):
-    filtered = df[df["City"] == city] if city else df
+fig_map.update_layout(mapbox_style="open-street-map")
+fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
+st.plotly_chart(fig_map, use_container_width=True)
 
-    total_cities = filtered["City"].nunique()
-    total_rest = len(filtered)
-    avg_rating = round(filtered["Aggregate rating"].mean(), 2)
-    avg_votes = int(filtered["Votes"].mean())
+# Top Restaurants Table
+st.markdown("### 🏆 Top 10 Rated Restaurants")
+top10 = filtered_df.sort_values(by="Aggregate rating", ascending=False).head(10)
+top10["Restaurant Name"] = top10.apply(
+    lambda row: "⭐ " + row["Restaurant Name"] if row["Aggregate rating"] == 5.0 else row["Restaurant Name"],
+    axis=1
+)
+st.dataframe(top10[["Restaurant Name", "City", "Aggregate rating", "Votes"]], use_container_width=True)
 
-    price_fig = px.histogram(filtered, x="Price range", nbins=4, title="Price Range Distribution")
-    scatter_fig = px.scatter(filtered, x="Votes", y="Aggregate rating", size="Votes", color="Price range",
-                             hover_data=["Restaurant Name"], title="Votes vs Ratings")
-
-    rating_group = filtered["Aggregate rating"].apply(lambda x: "⭐ 5-Star" if x == 5.0 else "Other")
-    map_fig = px.scatter_mapbox(filtered, lat="Latitude", lon="Longitude", color=rating_group,
-                                hover_name="Restaurant Name", zoom=3, height=350,
-                                hover_data=["City", "Cuisines"])
-    map_fig.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 30, "l": 0, "b": 0})
-    map_fig.update_layout(legend_title_text="Rating Category")
-
-    delivery_pie = px.pie(filtered, names="Has Online delivery", title="Online Delivery Availability")
-    table_pie = px.pie(filtered, names="Has Table booking", title="Table Booking Availability")
-    rating_dist = px.histogram(filtered, x="Aggregate rating", nbins=20, title="Ratings Distribution")
-
-    top10 = filtered.sort_values(by="Aggregate rating", ascending=False).head(10).copy()
-    top10["Restaurant Name"] = top10.apply(
-        lambda row: "⭐ " + row["Restaurant Name"] if row["Aggregate rating"] == 5.0 else row["Restaurant Name"],
-        axis=1
-    )
-    table_data = top10[["Restaurant Name", "City", "Aggregate rating", "Votes"]].to_dict('records')
-    table_cols = [{"name": i, "id": i} for i in ["Restaurant Name", "City", "Aggregate rating", "Votes"]]
-
-    return (total_cities, total_rest, avg_rating, avg_votes,
-            price_fig, scatter_fig, map_fig,
-            delivery_pie, table_pie, rating_dist,
-            table_data, table_cols)
-
-# Run the server
-if __name__ == "__main__":
-    app.run(debug=True)
+# 📬 Contact Section
+st.markdown("---")
+st.markdown("## 📬 Get in Touch!")
+st.markdown(
+    """
+    <p style='font-size:18px; color:#ccc;'>
+        Feel free to connect with me on LinkedIn or check out more projects on GitHub.
+    </p>
+    <p style='font-size:20px; font-weight:bold; color:#ffffff;'>
+        🔗 Mangesh Ambekar
+    </p>
+    <div style="display: flex; justify-content: left; gap: 20px;">
+        <a href="https://www.linkedin.com/in/mangeshsanjayambekar/" target="_blank">
+            <img src="https://www.svgrepo.com/show/448234/linkedin.svg" style="width: 40px;" />
+        </a>
+        <a href="https://github.com/Mangesh0101" target="_blank">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg" style="width: 40px;" />
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
